@@ -1,0 +1,21 @@
+[Desktop Entry]
+Type=Application
+Name=Velo
+GenericName=Navegador privado
+Comment=Navegador enfocado en privacidad y anonimato (Tor integrado)
+Exec=@BINDIR@/velo %u
+Icon=velo
+Terminal=false
+Categories=Network;WebBrowser;Security;
+MimeType=text/html;x-scheme-handler/http;x-scheme-handler/https;
+Keywords=browser;tor;privacy;anonymity;navegador;privacidad;
+StartupWMClass=velo
+Actions=NoTor;NoJS;
+
+[Desktop Action NoTor]
+Name=Velo sin Tor (tu IP será visible)
+Exec=@BINDIR@/velo --sin-tor
+
+[Desktop Action NoJS]
+Name=Velo sin JavaScript (modo más seguro)
+Exec=@BINDIR@/velo --sin-js

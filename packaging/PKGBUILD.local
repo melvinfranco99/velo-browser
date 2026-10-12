@@ -1,0 +1,21 @@
+# PKGBUILD usado por "./install.sh --system" (construye desde tu copia local).
+pkgname=velo-browser
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="Navegador enfocado en privacidad y anonimato, con Tor integrado"
+arch=('any')
+url="https://github.com/melvinfranco99/velo-browser"
+license=('MIT')
+depends=('python' 'python-pyqt6' 'python-pyqt6-webengine' 'tor')
+source=("velo-src.tar.gz")
+sha256sums=('SKIP')
+
+package() {
+  install -d "$pkgdir/usr/lib/velo"
+  cp -r velo "$pkgdir/usr/lib/velo/"
+  find "$pkgdir/usr/lib/velo" -name '__pycache__' -prune -exec rm -rf {} +
+  sed "s|@LIBDIR@|/usr/lib/velo|" packaging/velo.in | install -Dm755 /dev/stdin "$pkgdir/usr/bin/velo"
+  sed "s|@BINDIR@|/usr/bin|g" packaging/velo.desktop.in | install -Dm644 /dev/stdin "$pkgdir/usr/share/applications/velo.desktop"
+  install -Dm644 velo/data/velo.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/velo.svg"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

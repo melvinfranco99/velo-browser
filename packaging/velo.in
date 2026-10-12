@@ -1,0 +1,4 @@
+#!/bin/sh
+# Lanzador de Velo
+export PYTHONPATH="@LIBDIR@"
+exec /usr/bin/python3 -s -m velo "$@"
