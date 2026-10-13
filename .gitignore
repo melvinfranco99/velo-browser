@@ -1,5 +1,5 @@
 __pycache__/
 *.pyc
 *.pkg.tar.*
-src/
-pkg/
+/src/
+/pkg/

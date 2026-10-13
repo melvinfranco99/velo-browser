@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Velo: navegador privado y anónimo</title>
+<meta name="description" content="Velo es un navegador para Android y Arch Linux con Tor integrado, sesión efímera, bloqueo de rastreadores y protección antihuella.">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<link rel="icon" href="velo.svg" type="image/svg+xml">
+<style>
+  :root {
+    --bg: #14121c; --surface: #1d1a28; --surface-2: #252134; --line: #3a3550;
+    --text: #e7e3f2; --dim: #a9a3bd; --primary: #8b7fd1; --primary-strong: #6f5fc7;
+    --ok: #8ee6a8; --bad: #ff9aa5; --warn: #ffd08a;
+    --radius: 16px; --maxw: 1040px;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  a { color: var(--primary); }
+  .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 16px; }
+  header.top { display: flex; align-items: center; justify-content: space-between; padding: 18px 0; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 600; letter-spacing: 4px; color: var(--text); text-decoration: none; }
+  .brand img { width: 34px; height: 34px; }
+  nav a { color: var(--dim); text-decoration: none; margin-left: 18px; font-size: 15px; }
+  nav a:hover { color: var(--text); }
+  @media (max-width: 640px) { nav { display: none; } }
+
+  .hero { display: grid; grid-template-columns: 1.2fr 1fr; gap: 40px; align-items: center; padding: 48px 0 64px; }
+  @media (max-width: 820px) { .hero { grid-template-columns: 1fr; padding-top: 24px; } }
+  .hero h1 { font-size: clamp(34px, 6vw, 54px); line-height: 1.1; margin: 0 0 16px; font-weight: 700; }
+  .hero h1 span { color: var(--primary); }
+  .lead { color: var(--dim); font-size: 18px; margin: 0 0 28px; max-width: 34em; }
+  .pill { display: inline-flex; align-items: center; gap: 8px; background: #1f3b2b; color: var(--ok);
+          padding: 5px 12px; border-radius: 999px; font-size: 13px; margin-bottom: 18px; }
+  .cta { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  .btn { display: inline-flex; align-items: center; gap: 10px; padding: 14px 22px; border-radius: 14px;
+         font-weight: 600; text-decoration: none; font-size: 16px; border: 1px solid transparent; }
+  .btn-primary { background: var(--primary-strong); color: #fff; }
+  .btn-primary:hover { background: var(--primary); }
+  .btn-ghost { border-color: var(--line); color: var(--text); }
+  .btn-ghost:hover { background: var(--surface); }
+  .btn svg { width: 20px; height: 20px; }
+  .meta { color: var(--dim); font-size: 13px; margin-top: 12px; }
+
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 22px; }
+  .qr { text-align: center; }
+  .qr img { width: 200px; height: 200px; background: #fff; padding: 10px; border-radius: 12px; image-rendering: pixelated; }
+  .qr p { color: var(--dim); font-size: 14px; margin: 12px 0 0; }
+
+  section { padding: 56px 0; border-top: 1px solid var(--line); }
+  h2 { font-size: clamp(26px, 4vw, 34px); margin: 0 0 8px; }
+  .sub { color: var(--dim); margin: 0 0 32px; max-width: 46em; }
+
+  .steps { counter-reset: s; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+  .step { position: relative; padding-top: 52px; }
+  .step::before { counter-increment: s; content: counter(s); position: absolute; top: 18px; left: 22px;
+                  width: 28px; height: 28px; border-radius: 50%; background: var(--primary-strong);
+                  display: grid; place-items: center; font-weight: 700; font-size: 14px; }
+  .step h3 { margin: 0 0 6px; font-size: 17px; }
+  .step p { margin: 0; color: var(--dim); font-size: 15px; }
+
+  .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; }
+  .feature h3 { margin: 8px 0 6px; font-size: 17px; }
+  .feature p { margin: 0; color: var(--dim); font-size: 15px; }
+  .feature .ico { font-size: 26px; }
+
+  .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); }
+  table { border-collapse: collapse; width: 100%; min-width: 640px; font-size: 15px; }
+  th, td { padding: 12px 14px; text-align: center; border-bottom: 1px solid var(--line); }
+  th:first-child, td:first-child { text-align: left; color: var(--dim); }
+  thead th { background: var(--surface-2); font-weight: 600; }
+  tbody tr:last-child td { border-bottom: 0; }
+  .velo-col { background: rgba(139, 127, 209, .12); }
+  .y { color: var(--ok); } .n { color: var(--bad); } .p { color: var(--warn); }
+
+  .honest { border-left: 4px solid var(--warn); }
+  .honest h3 { margin-top: 0; }
+  .honest li { margin: 6px 0; color: var(--dim); }
+  .honest li b { color: var(--text); }
+
+  pre { background: #0f0d16; border: 1px solid var(--line); border-radius: 12px; padding: 16px; overflow-x: auto;
+        font: 14px/1.5 ui-monospace, "JetBrains Mono", monospace; color: #d9d4ec; margin: 12px 0; }
+  code { font-family: ui-monospace, "JetBrains Mono", monospace; font-size: .92em; }
+  .hash { word-break: break-all; font-size: 13px; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 820px) { .two { grid-template-columns: 1fr; } }
+
+  details { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 18px; margin-bottom: 10px; }
+  summary { cursor: pointer; font-weight: 600; }
+  details p { color: var(--dim); margin: 10px 0 0; }
+
+  footer { border-top: 1px solid var(--line); padding: 32px 0 48px; color: var(--dim); font-size: 14px; }
+  .android-only, .desktop-only { display: none; }
+  body.is-android .android-only, body.is-desktop .desktop-only { display: block; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <a class="brand" href="#"><img src="velo.svg" alt="">VELO</a>
+    <nav>
+      <a href="#instalar">Instalar</a>
+      <a href="#protecciones">Protecciones</a>
+      <a href="#comparativa">Comparativa</a>
+      <a href="#linux">Arch Linux</a>
+      <a href="https://github.com/melvinfranco99/velo-browser">GitHub</a>
+    </nav>
+  </header>
+
+  <div class="hero">
+    <div>
+      <div class="pill">🧅 Tor integrado · sin cuentas · sin telemetría</div>
+      <h1>Navega sin dejar <span>rastro</span>.</h1>
+      <p class="lead">Velo es un navegador para Android y Arch Linux que envía todo tu tráfico por Tor,
+        no guarda nada al cerrarse, bloquea rastreadores y dificulta la identificación por huella digital.</p>
+      <div class="cta">
+        <a class="btn btn-primary" id="download" href="https://github.com/melvinfranco99/velo-browser/releases/latest/download/velo.apk">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M5 20h14v-2H5v2zm7-18-5.5 5.5 1.41 1.41L11 5.83V16h2V5.83l3.09 3.08 1.41-1.41L12 2z" transform="rotate(180 12 12)"/></svg>
+          Descargar APK para Android
+        </a>
+        <a class="btn btn-ghost" href="#linux">Versión Arch Linux</a>
+      </div>
+      <p class="meta">Versión 1.0.0 · 12,0 MB · Android 10 o superior · <a href="#verificar">verificar la descarga</a></p>
+    </div>
+    <div class="card qr desktop-only">
+      <img src="qr.svg" alt="Código QR para descargar el APK de Velo">
+      <p>Escanéalo con tu móvil para descargar el APK directamente.</p>
+    </div>
+    <div class="card android-only">
+      <h3 style="margin-top:0">Estás en Android 👍</h3>
+      <p style="color:var(--dim);margin:0">Pulsa «Descargar APK» y sigue los pasos de abajo. Si el navegador avisa de que el archivo
+        puede ser dañino, es el aviso genérico para cualquier APK que no venga de Play Store.</p>
+    </div>
+  </div>
+</div>
+
+<section id="instalar">
+  <div class="wrap">
+    <h2>Instalar en Android</h2>
+    <p class="sub">Velo no está en Google Play (Play exige servicios de Google que van en contra de su objetivo), así que se instala desde el APK oficial.</p>
+    <div class="steps">
+      <div class="card step"><h3>Descarga el APK</h3><p>Pulsa el botón «Descargar APK» desde el móvil o escanea el QR.</p></div>
+      <div class="card step"><h3>Permite la instalación</h3><p>Abre el archivo. Android te pedirá permitir «instalar apps desconocidas» para tu navegador o gestor de archivos: actívalo solo para esta vez.</p></div>
+      <div class="card step"><h3>Instala y abre</h3><p>Pulsa «Instalar». Al abrir Velo verás cómo se conecta a Tor (de 10 a 30 segundos la primera vez).</p></div>
+      <div class="card step"><h3>Navega</h3><p>Usa el menú ⋮ → <b>Nueva identidad</b> para borrarlo todo y cambiar de IP cuando quieras.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="protecciones">
+  <div class="wrap">
+    <h2>Qué hace por tu privacidad</h2>
+    <p class="sub">Las protecciones se han probado en un emulador Android y en Arch Linux: la IP sale por Tor, WebRTC no existe para las webs, la zona horaria es UTC y el User-Agent no revela tu móvil.</p>
+    <div class="features">
+      <div class="card feature"><div class="ico">🧅</div><h3>Tor siempre activo</h3><p>Tor viene dentro de la app (no necesitas Orbot). Todo el tráfico y el DNS van por Tor. Si Tor cae, nada sale por tu conexión normal: falla cerrado.</p></div>
+      <div class="card feature"><div class="ico">🧹</div><h3>Nada se queda guardado</h3><p>Cookies, caché, historial y almacenamiento se borran al salir y con «Nueva identidad». Además, la app no se copia en las copias de seguridad.</p></div>
+      <div class="card feature"><div class="ico">🛡</div><h3>Rastreadores bloqueados</h3><p>Más de 72.000 dominios de rastreo, publicidad y malware bloqueados. Sin cookies de terceros y sin parámetros <code>utm_</code>, <code>fbclid</code> ni <code>gclid</code> en las URL.</p></div>
+      <div class="card feature"><div class="ico">🎭</div><h3>Antihuella digital</h3><p>Valores uniformes (pantalla, CPU, memoria, idioma, zona horaria UTC) y ruido por sitio en canvas y audio. El User-Agent no revela tu modelo de móvil.</p></div>
+      <div class="card feature"><div class="ico">📵</div><h3>Sin fugas de IP</h3><p>WebRTC eliminado, sin la cabecera <code>X-Requested-With</code>, sin Safe Browsing ni métricas de Google. La web no puede abrir otras apps que se conecten fuera de Tor.</p></div>
+      <div class="card feature"><div class="ico">🔒</div><h3>Solo HTTPS y sin permisos</h3><p>Las conexiones http se fuerzan a https. Cámara, micrófono, ubicación y notificaciones se deniegan siempre. Sin capturas de pantalla y con teclado en modo incógnito.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="comparativa">
+  <div class="wrap">
+    <h2>Comparativa</h2>
+    <p class="sub">Velo frente a los navegadores más usados, en lo que importa para la privacidad.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th></th><th>Chrome</th><th>Firefox</th><th>Brave</th><th class="velo-col">Velo</th><th>Tor Browser</th></tr></thead>
+        <tbody>
+          <tr><td>Oculta tu IP</td><td class="n">✗</td><td class="n">✗</td><td class="p">Solo ventanas Tor (escritorio)</td><td class="velo-col y">✓ siempre</td><td class="y">✓ siempre</td></tr>
+          <tr><td>Falla cerrado si cae Tor</td><td>—</td><td>—</td><td class="n">✗</td><td class="velo-col y">✓</td><td class="y">✓</td></tr>
+          <tr><td>Borra todo al cerrar</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="velo-col y">✓</td><td class="y">✓</td></tr>
+          <tr><td>Telemetría al fabricante</td><td class="n">Mucha</td><td class="p">Desactivable</td><td class="p">Algo</td><td class="velo-col y">Ninguna</td><td class="y">Ninguna</td></tr>
+          <tr><td>Bloqueo de rastreadores</td><td class="n">✗</td><td class="p">Básico</td><td class="y">✓</td><td class="velo-col y">✓</td><td class="p">Por aislamiento</td></tr>
+          <tr><td>Antihuella digital</td><td class="n">✗</td><td class="p">Parcial</td><td class="y">✓</td><td class="velo-col y">✓</td><td class="y">✓✓</td></tr>
+          <tr><td>Código pequeño y auditable</td><td class="n">✗</td><td class="p">Enorme</td><td class="p">Enorme</td><td class="velo-col y">✓</td><td class="p">Grande</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="card honest" style="margin-top:24px">
+      <h3>Siendo honestos: cuándo usar Tor Browser en vez de Velo</h3>
+      <ul>
+        <li><b>Tamaño de la multitud.</b> El anonimato de Tor Browser se basa en que millones de personas tienen la misma huella. Velo tiene pocos usuarios, así que un sitio avanzado podría distinguir «alguien que usa Velo».</li>
+        <li><b>Motor.</b> En Android, Velo usa el WebView del sistema; mantén «Android System WebView» actualizado. Con versiones antiguas (anteriores a 2023 aprox.) el WebView envía la cabecera <code>X-Requested-With</code>, que revela que usas Velo (la app te avisa si es tu caso). Tor Browser usa un motor endurecido propio.</li>
+        <li><b>Auditoría.</b> Velo es un proyecto nuevo; Tor Browser lo revisan expertos desde hace años.</li>
+      </ul>
+      <p style="color:var(--dim);margin-bottom:0">Para el día a día, Velo es mucho más privado que cualquier navegador convencional. Si tu seguridad física depende de tu anonimato, usa Tor Browser o Tails.</p>
+    </div>
+  </div>
+</section>
+
+<section id="verificar">
+  <div class="wrap">
+    <h2>Verificar la descarga</h2>
+    <p class="sub">Para asegurarte de que el APK no ha sido manipulado, compara su huella SHA-256 con esta:</p>
+    <div class="card">
+      <p style="margin:0 0 4px;color:var(--dim)">SHA-256 de <code>velo.apk</code> (versión 1.0.0)</p>
+      <pre class="hash">b76ec61f174afa05023b25b97512eee192ceee834467bddb291d14b9a79b7926</pre>
+      <p style="margin:12px 0 4px;color:var(--dim)">Huella del certificado de firma (las actualizaciones siempre deben coincidir)</p>
+      <pre class="hash">B8:1F:1E:6A:E2:8B:34:7E:FA:23:38:EE:0B:F9:BD:23:09:1C:85:A8:EA:35:97:19:81:10:CE:08:C9:93:9B:4A</pre>
+      <p style="margin:12px 0 0;color:var(--dim)">En Linux: <code>sha256sum velo.apk</code> · Con las herramientas de Android: <code>apksigner verify --print-certs velo.apk</code></p>
+    </div>
+  </div>
+</section>
+
+<section id="linux">
+  <div class="wrap">
+    <h2>Velo para Arch Linux</h2>
+    <p class="sub">La versión de escritorio lanza su propia instancia de Tor sin necesitar root y se instala con un solo comando.</p>
+    <div class="two">
+      <div class="card">
+        <h3 style="margin-top:0">Instalación de usuario (sin root)</h3>
+<pre>git clone https://github.com/melvinfranco99/velo-browser.git
+cd velo-browser
+./install.sh</pre>
+      </div>
+      <div class="card">
+        <h3 style="margin-top:0">Como paquete de pacman</h3>
+<pre>git clone https://github.com/melvinfranco99/velo-browser.git
+cd velo-browser
+./install.sh --system</pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="faq">
+  <div class="wrap">
+    <h2>Preguntas frecuentes</h2>
+    <details><summary>¿Por qué tarda unos segundos en abrir?</summary><p>Velo se conecta a la red Tor antes de cargar nada, para no exponer nunca tu IP. La primera vez tarda más; después reutiliza el estado de Tor y es más rápido.</p></details>
+    <details><summary>Una web no carga. ¿Qué hago?</summary><p>Algunas webs bloquean las conexiones desde Tor o solo funcionan con http. Prueba a recargar, usa «Nueva identidad» para cambiar de nodo de salida o desactiva «Solo HTTPS» en el menú.</p></details>
+    <details><summary>¿Necesito Orbot?</summary><p>No. Tor va dentro de Velo. Si tienes Orbot en modo VPN también funciona, aunque el tráfico pasará dos veces por Tor y será más lento.</p></details>
+    <details><summary>¿Recoge Velo algún dato?</summary><p>No. No tiene cuentas, analítica ni servidores propios. El código es abierto y puedes revisarlo en GitHub.</p></details>
+    <details><summary>¿Cómo se actualiza?</summary><p>Vuelve a esta página y descarga el APK nuevo; Android lo instala encima conservando la app, siempre que la firma coincida con la huella publicada arriba.</p></details>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    Velo es software libre (licencia MIT) · <a href="https://github.com/melvinfranco99/velo-browser">Código fuente</a> ·
+    <a href="https://github.com/melvinfranco99/velo-browser/releases">Todas las versiones</a><br>
+    Esta página no usa cookies, analítica ni recursos externos.
+  </div>
+</footer>
+
+<script>
+  // Solo cambia qué recuadro se muestra (QR en ordenador, consejo en Android). Nada sale de tu navegador.
+  document.body.classList.add(/Android/i.test(navigator.userAgent) ? 'is-android' : 'is-desktop');
+</script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Velo</string>
+    <string name="url_hint">Buscar o escribir dirección</string>
+    <string name="connecting">Conectando a la red Tor…</string>
+    <string name="retry">Reintentar</string>
+    <string name="exit">Salir</string>
+    <string name="reload">Recargar</string>
+    <string name="menu">Menú</string>
+    <string name="new_identity">Nueva identidad</string>
+</resources>

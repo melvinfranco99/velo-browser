@@ -1,4 +1,6 @@
-# Velo: navegador privado y anónimo para Arch Linux
+# Velo: navegador privado y anónimo para Arch Linux y Android
+
+**Web de descarga:** https://melvinfranco99.github.io/velo-browser/
 
 Velo es un navegador ligero (unas 900 líneas de Python) pensado para la
 privacidad y el anonimato. Usa el motor Chromium que trae **QtWebEngine** y le
@@ -18,7 +20,34 @@ añade varias capas de protección:
 > Brave o Tor Browser, se apoya en un motor maduro y se centra en el
 > endurecimiento, que es donde se gana o se pierde la privacidad.
 
-## Instalación
+## Android
+
+Descarga el APK desde la [web de Velo](https://melvinfranco99.github.io/velo-browser/)
+o desde [Releases](https://github.com/melvinfranco99/velo-browser/releases/latest).
+Funciona en Android 10 o superior y no necesita Orbot.
+
+La app Android (`android/`, en Kotlin) aplica el mismo enfoque que la versión
+de escritorio:
+
+- **Tor embebido** (tor-android 0.4.8 de The Guardian Project, autores de
+  Orbot). El WebView se fuerza por Tor con `ProxyController` y sin regla
+  DIRECT: si Tor cae, no sale nada. Las descargas también van por Tor.
+- **Perfiles efímeros** (en WebView 121 o posterior): «Nueva identidad» borra
+  el perfil entero. En versiones antiguas se borran cookies, almacenamiento y
+  caché.
+- **WebRTC eliminado**, porque en Android el proxy del WebView no cubre UDP.
+- **Sin rastros en el sistema:** sin copias de seguridad, sin Safe Browsing ni
+  métricas de Google, sin capturas de pantalla (`FLAG_SECURE`) y con el teclado
+  en modo incógnito.
+- **Huella:** User-Agent y Client Hints genéricos (sin modelo de móvil),
+  cabecera `X-Requested-With` desactivada (requiere WebView actualizado; la app
+  avisa si no lo está), `Accept-Language: en-US`, zona horaria UTC y ruido por
+  sitio en canvas y audio.
+- Bloqueo de unos 72.000 dominios, solo HTTPS y limpieza de URL.
+
+Para compilarlo: `cd android && ./gradlew assembleRelease` (JDK 17 y SDK 34).
+
+## Instalación en Arch Linux
 
 ```bash
 git clone https://github.com/melvinfranco99/velo-browser.git
@@ -184,6 +213,9 @@ anonimato, usa Tor Browser o Tails.
 - Activa `--sin-js` en sitios donde no lo necesites.
 
 ## Estructura del código
+
+`android/` contiene la app Android y `docs/` la web de descarga
+(GitHub Pages). La versión de escritorio está en:
 
 ```
 velo/
