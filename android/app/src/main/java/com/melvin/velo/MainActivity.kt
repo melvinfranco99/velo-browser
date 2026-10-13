@@ -1,92 +1,83 @@
 package com.melvin.velo
 
-import android.annotation.SuppressLint
 import android.content.ContentValues
 import android.content.Intent
-import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Bundle
 import android.os.LocaleList
+import android.os.Process
 import android.provider.MediaStore
+import android.text.InputType
 import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
-import android.webkit.CookieManager
-import android.webkit.GeolocationPermissions
-import android.webkit.PermissionRequest
-import android.webkit.URLUtil
-import android.webkit.ValueCallback
-import android.webkit.WebChromeClient
-import android.webkit.WebResourceRequest
-import android.webkit.WebResourceResponse
-import android.webkit.WebSettings
-import android.webkit.WebStorage
-import android.webkit.WebView
-import android.webkit.WebViewClient
+import android.widget.EditText
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.PopupMenu
-import androidx.core.content.ContextCompat
-import androidx.webkit.ProfileStore
-import androidx.webkit.ProxyConfig
-import androidx.webkit.ProxyController
-import androidx.webkit.UserAgentMetadata
-import androidx.webkit.WebSettingsCompat
-import androidx.webkit.WebViewCompat
-import androidx.webkit.WebViewFeature
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import com.melvin.velo.databinding.ActivityMainBinding
-import java.io.ByteArrayInputStream
-import java.net.HttpURLConnection
-import java.net.InetSocketAddress
-import java.net.Proxy
-import java.net.URL
-import java.security.SecureRandom
+import org.json.JSONObject
+import org.mozilla.geckoview.AllowOrDeny
+import org.mozilla.geckoview.BasicSelectionActionDelegate
+import org.mozilla.geckoview.GeckoResult
+import org.mozilla.geckoview.GeckoRuntime
+import org.mozilla.geckoview.GeckoRuntimeSettings
+import org.mozilla.geckoview.GeckoSession
+import org.mozilla.geckoview.GeckoSession.PermissionDelegate
+import org.mozilla.geckoview.GeckoSession.PromptDelegate
+import org.mozilla.geckoview.GeckoSessionSettings
+import org.mozilla.geckoview.StorageController
+import org.mozilla.geckoview.WebExtension
+import org.mozilla.geckoview.WebRequestError
+import org.mozilla.geckoview.WebResponse
 import java.util.Locale
-import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
 
 class MainActivity : AppCompatActivity(), TorManager.Listener {
 
     private companion object {
-        /** Versión de Chromium a partir de la que WebView deja de enviar X-Requested-With. */
-        const val MIN_SAFE_WEBVIEW = 120
+        const val ASSETS = "resource://android/assets"
+        const val START_URL = "$ASSETS/start.html"
     }
 
     private lateinit var ui: ActivityMainBinding
     private lateinit var tor: TorManager
-    private var webView: WebView? = null
-    private var blocklist: Blocklist? = null
-    private var profileName: String? = null
-    private var httpTunnelPort = -1
+    private var runtime: GeckoRuntime? = null
+    private var session: GeckoSession? = null
     private var torReady = false
     private var jsEnabled = true
     private var httpsOnly = true
+    private var canGoBack = false
     private var pendingUrl: String? = null
-    private var outdatedWebView = false
-    private var warnedOutdated = false
-    private val blockedCount = AtomicInteger(0)
-    private var fileCallback: ValueCallback<Array<Uri>>? = null
-    private var customView: View? = null
-    private var customViewCallback: WebChromeClient.CustomViewCallback? = null
-    private lateinit var userAgent: String
-    private lateinit var chromeMajor: String
+    private var blockedTotal = 0
+    private var blockedBase = 0
+    private var blockedDomains = 0
+    private var pendingFilePrompt: Pair<PromptDelegate.FilePrompt, GeckoResult<PromptDelegate.PromptResponse>>? = null
 
-    private val pickFiles = registerForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
-        fileCallback?.onReceiveValue(uris.toTypedArray())
-        fileCallback = null
+    private val pickFiles = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        val (prompt, result) = pendingFilePrompt ?: return@registerForActivityResult
+        pendingFilePrompt = null
+        result.complete(
+            when {
+                uris.isEmpty() -> prompt.dismiss()
+                prompt.type == PromptDelegate.FilePrompt.Type.MULTIPLE -> prompt.confirm(this, uris.toTypedArray())
+                else -> prompt.confirm(this, uris[0])
+            }
+        )
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        // Idioma neutro para la web (Accept-Language): no revela que hablas español.
         LocaleList.setDefault(LocaleList(Locale.US))
         super.onCreate(savedInstanceState)
-        // Sin capturas de pantalla ni miniatura en "apps recientes" (solo en la versión
-        // publicada; la de depuración las permite para poder probarla).
+        // Sin capturas de pantalla ni miniatura en "apps recientes" (solo en la versión publicada).
         if (!BuildConfig.DEBUG) {
             window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
         }
@@ -98,21 +89,11 @@ class MainActivity : AppCompatActivity(), TorManager.Listener {
         setupToolbar()
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
-                when {
-                    customView != null -> customViewCallback?.onCustomViewHidden()
-                    webView?.canGoBack() == true -> webView?.goBack()
-                    else -> finish()
-                }
+                if (canGoBack) session?.goBack() else finish()
             }
         })
         ui.retryButton.setOnClickListener { startTor() }
         ui.exitButton.setOnClickListener { finish() }
-
-        wipeLeftovers()
-        thread(name = "blocklist") {
-            val list = Blocklist.load(applicationContext)
-            runOnUiThread { blocklist = list }
-        }
         startTor()
     }
 
@@ -127,6 +108,7 @@ class MainActivity : AppCompatActivity(), TorManager.Listener {
     private fun startTor() {
         ui.splash.visibility = View.VISIBLE
         ui.splashButtons.visibility = View.GONE
+        ui.retryButton.visibility = View.VISIBLE
         ui.splashProgress.progress = 0
         ui.splashStatus.text = getString(R.string.connecting)
         tor.start(this)
@@ -139,26 +121,21 @@ class MainActivity : AppCompatActivity(), TorManager.Listener {
 
     override fun onReady(socksPort: Int, httpTunnelPort: Int) {
         if (torReady) return
-        this.httpTunnelPort = httpTunnelPort
-        if (!WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE)) {
-            showFatal("Tu versión de «Android System WebView» no permite forzar el proxy de Tor.\n" +
-                "Actualízala desde la tienda de aplicaciones. Velo no navegará sin Tor.")
+        if (GeckoEngine.runtime != null && GeckoEngine.socksPort != socksPort) {
+            // El motor ya se creó con otro puerto (Tor se reinició): hay que reiniciar Velo.
+            showFatal("Tor se ha reiniciado. Cierra y vuelve a abrir Velo.")
             return
         }
-        // Todo el tráfico del WebView por Tor. Sin regla DIRECT: si Tor cae, nada sale.
-        // removeImplicitRules(): incluso localhost pasa por Tor (impide escanear tu red).
-        val config = ProxyConfig.Builder()
-            .addProxyRule("socks5://127.0.0.1:$socksPort")
-            .removeImplicitRules()
-            .build()
-        ProxyController.getInstance().setProxyOverride(config, ContextCompat.getMainExecutor(this)) {
-            torReady = true
-            ui.splash.visibility = View.GONE
-            createWebView()
-            val url = pendingUrl
-            pendingUrl = null
-            if (url != null) navigate(url) else loadStartPage()
-        }
+        // El proxy de Tor se fija al crear el motor: no hay forma de cargar nada sin Tor.
+        val rt = GeckoEngine.start(this, socksPort)
+        runtime = rt
+        torReady = true
+        ui.splash.visibility = View.GONE
+        installShield(rt)
+        openSession()
+        val url = pendingUrl
+        pendingUrl = null
+        if (url != null) navigate(url) else loadStartPage()
     }
 
     override fun onError(message: String) {
@@ -180,199 +157,269 @@ class MainActivity : AppCompatActivity(), TorManager.Listener {
         ui.retryButton.visibility = View.GONE
     }
 
-    // ---------------- WebView ----------------
+    // ---------------- Bloqueador (extensión integrada) ----------------
 
-    @SuppressLint("SetJavaScriptEnabled", "RequiresFeature")
-    private fun createWebView() {
-        val wv = WebView(this)
+    private fun installShield(rt: GeckoRuntime) {
+        val controller = rt.webExtensionController
+        controller.ensureBuiltIn("resource://android/assets/velo-shield/", "shield@velo.melvin")
+            .then { ext -> if (ext != null) controller.setAllowedInPrivateBrowsing(ext, true) else GeckoResult.fromValue(null) }
+            .accept({ ext -> ext?.setMessageDelegate(shieldMessages, "velo") },
+                { err -> Toast.makeText(this, "No se pudo activar el bloqueador: ${err?.message}", Toast.LENGTH_LONG).show() })
+    }
 
-        // Perfil efímero propio: se borra entero con "Nueva identidad" y al salir.
-        if (WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) {
-            val name = "s" + SecureRandom().nextInt(Int.MAX_VALUE)
-            ProfileStore.getInstance().getOrCreateProfile(name)
-            WebViewCompat.setProfile(wv, name)
-            profileName = name
-        }
-
-        val defaultUa = wv.settings.userAgentString
-        chromeMajor = Regex("Chrome/(\\d+)").find(defaultUa)?.groupValues?.get(1) ?: "140"
-        // User-Agent reducido de Chrome: sin modelo de móvil, versión de Android ni la marca "wv".
-        userAgent = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) " +
-            "Chrome/$chromeMajor.0.0.0 Mobile Safari/537.36"
-
-        wv.settings.apply {
-            userAgentString = userAgent
-            javaScriptEnabled = jsEnabled
-            domStorageEnabled = true
-            databaseEnabled = false
-            setGeolocationEnabled(false)
-            allowFileAccess = false
-            allowContentAccess = false
-            javaScriptCanOpenWindowsAutomatically = false
-            setSupportMultipleWindows(false)
-            mediaPlaybackRequiresUserGesture = true
-            mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
-            saveFormData = false
-            cacheMode = WebSettings.LOAD_NO_CACHE
-            builtInZoomControls = true
-            displayZoomControls = false
-            loadWithOverviewMode = true
-            useWideViewPort = true
-        }
-        if (WebViewFeature.isFeatureSupported(WebViewFeature.SAFE_BROWSING_ENABLE)) {
-            WebSettingsCompat.setSafeBrowsingEnabled(wv.settings, false)
-        }
-        // Sin cabecera X-Requested-With (revelaría el nombre del paquete de la app).
-        if (WebViewFeature.isFeatureSupported(WebViewFeature.REQUESTED_WITH_HEADER_ALLOW_LIST)) {
-            WebSettingsCompat.setRequestedWithHeaderOriginAllowList(wv.settings, emptySet())
-        }
-        // Comprobado en un emulador: WebView 113 dice admitir lo anterior pero sigue enviando
-        // la cabecera. Por eso se avisa según la versión real del motor.
-        outdatedWebView = (chromeMajor.toIntOrNull() ?: 0) < MIN_SAFE_WEBVIEW ||
-            !WebViewFeature.isFeatureSupported(WebViewFeature.REQUESTED_WITH_HEADER_ALLOW_LIST)
-        // Client Hints coherentes con el User-Agent (sin "Android WebView" ni modelo).
-        if (WebViewFeature.isFeatureSupported(WebViewFeature.USER_AGENT_METADATA)) {
-            fun brand(name: String, v: String) = UserAgentMetadata.BrandVersion.Builder()
-                .setBrand(name).setMajorVersion(v).setFullVersion("$v.0.0.0").build()
-            WebSettingsCompat.setUserAgentMetadata(wv.settings, UserAgentMetadata.Builder()
-                .setBrandVersionList(listOf(brand("Chromium", chromeMajor), brand("Google Chrome", chromeMajor),
-                    brand("Not=A?Brand", "24")))
-                .setFullVersion("$chromeMajor.0.0.0")
-                .setPlatform("Android").setPlatformVersion("10.0.0")
-                .setModel("").setMobile(true).setArchitecture("").setBitness(0).setWow64(false)
-                .build())
-        }
-        if (WebViewFeature.isFeatureSupported(WebViewFeature.ATTRIBUTION_REGISTRATION_BEHAVIOR)) {
-            WebSettingsCompat.setAttributionRegistrationBehavior(
-                wv.settings, WebSettingsCompat.ATTRIBUTION_BEHAVIOR_DISABLED)
-        }
-        CookieManager.getInstance().setAcceptThirdPartyCookies(wv, false)
-
-        if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
-            WebViewCompat.addDocumentStartJavaScript(wv, hardeningScript(), setOf("*"))
-        }
-
-        wv.webViewClient = PrivacyClient()
-        wv.webChromeClient = PrivacyChromeClient()
-        wv.setDownloadListener { url, ua, disposition, mime, _ -> download(url, ua, disposition, mime) }
-
-        ui.webContainer.addView(wv)
-        webView = wv
-        updateStatusLine()
-        if (outdatedWebView && !warnedOutdated) {
-            warnedOutdated = true
-            AlertDialog.Builder(this)
-                .setTitle("Actualiza Android System WebView")
-                .setMessage("Tu versión del motor web (Chromium $chromeMajor) es antigua y envía a las webs la " +
-                    "cabecera «X-Requested-With», que revela que usas Velo. Tu IP sigue oculta por Tor, pero " +
-                    "para el máximo anonimato actualiza «Android System WebView» (o Chrome) desde la tienda.")
-                .setPositiveButton("Entendido", null)
-                .show()
+    private val shieldMessages = object : WebExtension.MessageDelegate {
+        override fun onMessage(nativeApp: String, message: Any, sender: WebExtension.MessageSender): GeckoResult<Any>? {
+            val json = message as? JSONObject ?: return null
+            runOnUiThread {
+                if (json.has("blocked")) blockedTotal = json.getInt("blocked")
+                if (json.has("domains")) blockedDomains = json.getInt("domains")
+                updateStatusLine()
+            }
+            return null
         }
     }
 
-    private fun hardeningScript(): String {
-        val seed = SecureRandom().nextInt(Int.MAX_VALUE)
-        return assets.open("hardening.js").bufferedReader().readText().replace("__VELO_SEED__", seed.toString())
+    // ---------------- Sesión Gecko (navegación privada en RAM) ----------------
+
+    private fun openSession() {
+        val rt = runtime ?: return
+        val settings = GeckoSessionSettings.Builder()
+            .usePrivateMode(true)          // cookies, caché e historial solo en memoria
+            .useTrackingProtection(false)  // el bloqueo lo hace Velo Shield, sin listas de Mozilla
+            .allowJavascript(jsEnabled)
+            .userAgentMode(GeckoSessionSettings.USER_AGENT_MODE_MOBILE)
+            .viewportMode(GeckoSessionSettings.VIEWPORT_MODE_MOBILE)
+            .build()
+        val s = GeckoSession(settings)
+        s.navigationDelegate = navigation
+        s.progressDelegate = progress
+        s.contentDelegate = content
+        s.permissionDelegate = permissions
+        s.promptDelegate = prompts
+        s.selectionActionDelegate = BasicSelectionActionDelegate(this)
+        s.open(rt)
+        ui.geckoView.setSession(s)
+        session = s
+        canGoBack = false
+        updateStatusLine()
+    }
+
+    private fun closeSession() {
+        val s = session ?: return
+        session = null
+        ui.geckoView.releaseSession()
+        s.close()
     }
 
     private fun loadStartPage() {
-        val count = blocklist?.size ?: 0
-        val html = assets.open("start.html").bufferedReader().readText()
-            .replace("{{STATUS_CLASS}}", "tor")
-            .replace("{{STATUS_TEXT}}", "Conectado a través de Tor")
-            .replace("{{BLOCKED_DOMAINS}}", String.format(Locale.GERMANY, "%,d", count))
-        webView?.loadDataWithBaseURL(null, html, "text/html", "utf-8", null)
+        // Gecko no muestra documentos data: abiertos así; las páginas propias van en assets.
+        session?.loadUri(START_URL)
         ui.urlBar.setText("")
     }
 
     private fun navigate(input: String) {
-        var url = UrlCleaner.fromUserInput(input)
-        if (httpsOnly) UrlCleaner.upgrade(url)?.let { url = it }
-        UrlCleaner.strip(url)?.let { url = it }
-        webView?.loadUrl(url)
-        webView?.requestFocus()
+        session?.loadUri(UrlInput.toUrl(input))
+        ui.geckoView.requestFocus()
     }
 
-    private inner class PrivacyClient : WebViewClient() {
-        override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
-            if (!request.isForMainFrame && blocklist?.isBlocked(request.url.host) == true) {
-                blockedCount.incrementAndGet()
-                return WebResourceResponse("text/plain", "utf-8", 403, "Blocked", emptyMap(),
-                    ByteArrayInputStream(ByteArray(0)))
+    private val navigation = object : GeckoSession.NavigationDelegate {
+        override fun onLocationChange(session: GeckoSession, url: String?,
+                                      perms: MutableList<PermissionDelegate.ContentPermission>, hasUserGesture: Boolean) {
+            showUrl(url)
+        }
+
+        override fun onCanGoBack(session: GeckoSession, canGoBack: Boolean) {
+            this@MainActivity.canGoBack = canGoBack
+        }
+
+        override fun onLoadRequest(session: GeckoSession,
+                                   request: GeckoSession.NavigationDelegate.LoadRequest): GeckoResult<AllowOrDeny>? {
+            val scheme = Uri.parse(request.uri).scheme?.lowercase(Locale.ROOT)
+            return when (scheme) {
+                "http", "https", "about", "data", "blob", "resource", "moz-extension", null -> GeckoResult.allow()
+                else -> {
+                    // intent:, market:, tel:, mailto:… abrirían otra app, posiblemente fuera de Tor.
+                    runOnUiThread {
+                        Toast.makeText(this@MainActivity, "Bloqueado: la web intentó abrir otra aplicación ($scheme:)",
+                            Toast.LENGTH_SHORT).show()
+                    }
+                    GeckoResult.deny()
+                }
             }
+        }
+
+        override fun onNewSession(session: GeckoSession, uri: String): GeckoResult<GeckoSession>? {
+            // Sin ventanas nuevas: los enlaces target=_blank se abren en la misma pestaña.
+            session.loadUri(uri)
             return null
         }
 
-        override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-            val url = request.url.toString()
-            when (request.url.scheme) {
-                "http", "https" -> {
-                    val upgraded = if (httpsOnly) UrlCleaner.upgrade(url) else null
-                    val target = UrlCleaner.strip(upgraded ?: url) ?: upgraded ?: return false
-                    view.loadUrl(target)
-                    return true
-                }
-                "about", "data", "blob", "javascript" -> return false
-                else -> {
-                    // intent:, market:, tel:, mailto:… abrirían otra app, posiblemente fuera de Tor.
-                    Toast.makeText(this@MainActivity,
-                        "Bloqueado: la web intentó abrir otra aplicación (${request.url.scheme}:)",
-                        Toast.LENGTH_SHORT).show()
-                    return true
-                }
+        override fun onLoadError(session: GeckoSession, uri: String?, error: WebRequestError): GeckoResult<String> {
+            // La dirección que falló ya se ve en la barra; cada tipo de error tiene su página.
+            val page = when (error.code) {
+                WebRequestError.ERROR_PROXY_CONNECTION_REFUSED -> "error-proxy"
+                WebRequestError.ERROR_UNKNOWN_HOST -> "error-host"
+                WebRequestError.ERROR_NET_TIMEOUT -> "error-timeout"
+                WebRequestError.ERROR_CONNECTION_REFUSED -> "error-refused"
+                WebRequestError.ERROR_HTTPS_ONLY -> "error-https"
+                else -> if (error.category == WebRequestError.ERROR_CATEGORY_SECURITY) "error-cert" else "error"
             }
-        }
-
-        override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
-            showUrl(url)
-        }
-
-        override fun onPageFinished(view: WebView, url: String) {
-            showUrl(url)
-            updateStatusLine()
-        }
-
-        override fun doUpdateVisitedHistory(view: WebView, url: String, isReload: Boolean) {
-            showUrl(url)
+            return GeckoResult.fromValue("$ASSETS/$page.html")
         }
     }
 
-    private inner class PrivacyChromeClient : WebChromeClient() {
-        override fun onProgressChanged(view: WebView, newProgress: Int) {
-            ui.pageProgress.progress = newProgress
-            ui.pageProgress.visibility = if (newProgress in 1..99) View.VISIBLE else View.INVISIBLE
-            if (newProgress == 100) updateStatusLine()
+    private val progress = object : GeckoSession.ProgressDelegate {
+        override fun onProgressChange(session: GeckoSession, progress: Int) {
+            ui.pageProgress.progress = progress
+            ui.pageProgress.visibility = if (progress in 1..99) View.VISIBLE else View.INVISIBLE
         }
 
-        // Cámara, micrófono, MIDI, contenido protegido…: siempre denegado.
-        override fun onPermissionRequest(request: PermissionRequest) = request.deny()
+        override fun onPageStop(session: GeckoSession, success: Boolean) {
+            ui.pageProgress.visibility = View.INVISIBLE
+            updateStatusLine()
+        }
+    }
 
-        override fun onGeolocationPermissionsShowPrompt(origin: String, callback: GeolocationPermissions.Callback) =
-            callback.invoke(origin, false, false)
-
-        override fun onShowFileChooser(view: WebView, callback: ValueCallback<Array<Uri>>,
-                                       params: FileChooserParams): Boolean {
-            fileCallback?.onReceiveValue(null)
-            fileCallback = callback
-            val type = params.acceptTypes.firstOrNull { it.isNotBlank() } ?: "*/*"
-            pickFiles.launch(if (type.contains('/')) type else "*/*")
-            return true
+    private val content = object : GeckoSession.ContentDelegate {
+        override fun onFullScreen(session: GeckoSession, fullScreen: Boolean) {
+            val controller = WindowCompat.getInsetsController(window, window.decorView)
+            ui.toolbar.visibility = if (fullScreen) View.GONE else View.VISIBLE
+            ui.statusLine.visibility = if (fullScreen) View.GONE else View.VISIBLE
+            if (fullScreen) {
+                controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                controller.hide(WindowInsetsCompat.Type.systemBars())
+            } else {
+                controller.show(WindowInsetsCompat.Type.systemBars())
+            }
         }
 
-        override fun onShowCustomView(view: View, callback: CustomViewCallback) {
-            customView = view
-            customViewCallback = callback
-            ui.fullscreenContainer.addView(view)
-            ui.fullscreenContainer.visibility = View.VISIBLE
+        override fun onExternalResponse(session: GeckoSession, response: WebResponse) {
+            confirmDownload(response)
         }
 
-        override fun onHideCustomView() {
-            ui.fullscreenContainer.removeAllViews()
-            ui.fullscreenContainer.visibility = View.GONE
-            customView = null
-            customViewCallback = null
+        override fun onCrash(session: GeckoSession) {
+            Toast.makeText(this@MainActivity, "El motor web se reinició", Toast.LENGTH_SHORT).show()
+            closeSession()
+            openSession()
+            loadStartPage()
         }
+
+        override fun onKill(session: GeckoSession) = onCrash(session)
+    }
+
+    /** Cámara, micrófono, ubicación, notificaciones, DRM…: siempre denegados. */
+    private val permissions = object : PermissionDelegate {
+        override fun onContentPermissionRequest(session: GeckoSession,
+                                                perm: PermissionDelegate.ContentPermission): GeckoResult<Int> =
+            GeckoResult.fromValue(PermissionDelegate.ContentPermission.VALUE_DENY)
+
+        override fun onAndroidPermissionsRequest(session: GeckoSession, permissions: Array<out String>?,
+                                                 callback: PermissionDelegate.Callback) = callback.reject()
+
+        override fun onMediaPermissionRequest(session: GeckoSession, uri: String,
+                                              video: Array<out PermissionDelegate.MediaSource>?,
+                                              audio: Array<out PermissionDelegate.MediaSource>?,
+                                              callback: PermissionDelegate.MediaCallback) = callback.reject()
+    }
+
+    // ---------------- Diálogos de las páginas (alert, confirm, select, archivos…) ----------------
+
+    private val prompts = object : PromptDelegate {
+        private fun dialog(title: String?, message: String?) = AlertDialog.Builder(this@MainActivity).apply {
+            if (!title.isNullOrBlank()) setTitle(title)
+            if (!message.isNullOrBlank()) setMessage(message)
+        }
+
+        override fun onAlertPrompt(session: GeckoSession,
+                                   prompt: PromptDelegate.AlertPrompt): GeckoResult<PromptDelegate.PromptResponse> {
+            val result = GeckoResult<PromptDelegate.PromptResponse>()
+            dialog(prompt.title, prompt.message)
+                .setPositiveButton("OK", null)
+                .setOnDismissListener { result.complete(prompt.dismiss()) }
+                .show()
+            return result
+        }
+
+        override fun onButtonPrompt(session: GeckoSession,
+                                    prompt: PromptDelegate.ButtonPrompt): GeckoResult<PromptDelegate.PromptResponse> {
+            val result = GeckoResult<PromptDelegate.PromptResponse>()
+            dialog(prompt.title, prompt.message)
+                .setPositiveButton("Aceptar") { _, _ -> result.complete(prompt.confirm(PromptDelegate.ButtonPrompt.Type.POSITIVE)) }
+                .setNegativeButton("Cancelar") { _, _ -> result.complete(prompt.confirm(PromptDelegate.ButtonPrompt.Type.NEGATIVE)) }
+                .setOnCancelListener { result.complete(prompt.dismiss()) }
+                .show()
+            return result
+        }
+
+        override fun onTextPrompt(session: GeckoSession,
+                                  prompt: PromptDelegate.TextPrompt): GeckoResult<PromptDelegate.PromptResponse> {
+            val result = GeckoResult<PromptDelegate.PromptResponse>()
+            val input = EditText(this@MainActivity).apply {
+                setText(prompt.defaultValue ?: "")
+                inputType = InputType.TYPE_CLASS_TEXT
+                imeOptions = EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING
+            }
+            dialog(prompt.title, prompt.message)
+                .setView(input)
+                .setPositiveButton("Aceptar") { _, _ -> result.complete(prompt.confirm(input.text.toString())) }
+                .setNegativeButton("Cancelar") { _, _ -> result.complete(prompt.dismiss()) }
+                .setOnCancelListener { result.complete(prompt.dismiss()) }
+                .show()
+            return result
+        }
+
+        override fun onChoicePrompt(session: GeckoSession,
+                                    prompt: PromptDelegate.ChoicePrompt): GeckoResult<PromptDelegate.PromptResponse> {
+            val result = GeckoResult<PromptDelegate.PromptResponse>()
+            // Aplana los grupos (<optgroup>) y descarta separadores y opciones desactivadas.
+            val choices = mutableListOf<PromptDelegate.ChoicePrompt.Choice>()
+            fun collect(items: Array<out PromptDelegate.ChoicePrompt.Choice>) {
+                for (c in items) {
+                    val sub = c.items
+                    if (sub != null) collect(sub) else if (!c.separator && !c.disabled) choices.add(c)
+                }
+            }
+            collect(prompt.choices)
+            val labels = choices.map { it.label }.toTypedArray()
+            val builder = dialog(prompt.title, null).setOnCancelListener { result.complete(prompt.dismiss()) }
+            if (prompt.type == PromptDelegate.ChoicePrompt.Type.MULTIPLE) {
+                val checked = choices.map { it.selected }.toBooleanArray()
+                builder.setMultiChoiceItems(labels, checked) { _, i, on -> checked[i] = on }
+                    .setPositiveButton("Aceptar") { _, _ ->
+                        result.complete(prompt.confirm(choices.filterIndexed { i, _ -> checked[i] }.toTypedArray()))
+                    }
+                    .setNegativeButton("Cancelar") { _, _ -> result.complete(prompt.dismiss()) }
+            } else {
+                builder.setSingleChoiceItems(labels, choices.indexOfFirst { it.selected }) { d, i ->
+                    result.complete(prompt.confirm(choices[i]))
+                    d.dismiss()
+                }
+            }
+            builder.show()
+            return result
+        }
+
+        override fun onFilePrompt(session: GeckoSession,
+                                  prompt: PromptDelegate.FilePrompt): GeckoResult<PromptDelegate.PromptResponse> {
+            val result = GeckoResult<PromptDelegate.PromptResponse>()
+            pendingFilePrompt?.let { (p, r) -> r.complete(p.dismiss()) }
+            pendingFilePrompt = prompt to result
+            val types = prompt.mimeTypes?.filter { it.contains('/') }?.toTypedArray()
+            pickFiles.launch(if (types.isNullOrEmpty()) arrayOf("*/*") else types)
+            return result
+        }
+
+        override fun onPopupPrompt(session: GeckoSession,
+                                   prompt: PromptDelegate.PopupPrompt): GeckoResult<PromptDelegate.PromptResponse> =
+            GeckoResult.fromValue(prompt.confirm(AllowOrDeny.DENY))
+
+        override fun onBeforeUnloadPrompt(session: GeckoSession,
+                                          prompt: PromptDelegate.BeforeUnloadPrompt): GeckoResult<PromptDelegate.PromptResponse> =
+            GeckoResult.fromValue(prompt.confirm(AllowOrDeny.ALLOW))
+
+        override fun onRepostConfirmPrompt(session: GeckoSession,
+                                           prompt: PromptDelegate.RepostConfirmPrompt): GeckoResult<PromptDelegate.PromptResponse> =
+            GeckoResult.fromValue(prompt.confirm(AllowOrDeny.ALLOW))
     }
 
     // ---------------- Interfaz ----------------
@@ -388,7 +435,7 @@ class MainActivity : AppCompatActivity(), TorManager.Listener {
             }
             go
         }
-        ui.reloadButton.setOnClickListener { webView?.reload() }
+        ui.reloadButton.setOnClickListener { session?.reload() }
         ui.torBadge.setOnClickListener {
             Toast.makeText(this, "Todo el tráfico sale por Tor", Toast.LENGTH_SHORT).show()
         }
@@ -404,18 +451,24 @@ class MainActivity : AppCompatActivity(), TorManager.Listener {
         menu.menu.add(0, 5, 4, "Comprobar conexión Tor")
         menu.menu.add(0, 6, 5, "Acerca de Velo")
         menu.setOnMenuItemClickListener { item ->
+            if (!torReady && item.itemId != 6) return@setOnMenuItemClickListener true
             when (item.itemId) {
                 1 -> confirmNewIdentity()
                 2 -> {
                     jsEnabled = !jsEnabled
-                    webView?.settings?.javaScriptEnabled = jsEnabled
-                    webView?.reload()
+                    session?.settings?.allowJavascript = jsEnabled
+                    session?.reload()
+                    updateStatusLine()
                     Toast.makeText(this, if (jsEnabled) "JavaScript activado" else
                         "JavaScript desactivado (modo más seguro)", Toast.LENGTH_SHORT).show()
                 }
-                3 -> httpsOnly = !httpsOnly
-                4 -> if (torReady) loadStartPage()
-                5 -> if (torReady) navigate("https://check.torproject.org/")
+                3 -> {
+                    httpsOnly = !httpsOnly
+                    runtime?.settings?.allowInsecureConnections =
+                        if (httpsOnly) GeckoRuntimeSettings.HTTPS_ONLY else GeckoRuntimeSettings.ALLOW_ALL
+                }
+                4 -> loadStartPage()
+                5 -> navigate("https://check.torproject.org/")
                 6 -> showAbout()
             }
             true
@@ -427,26 +480,27 @@ class MainActivity : AppCompatActivity(), TorManager.Listener {
         AlertDialog.Builder(this)
             .setTitle("Velo ${BuildConfig.VERSION_NAME}")
             .setMessage("Navegador enfocado en privacidad y anonimato.\n\n" +
+                "• Motor: GeckoView ${org.mozilla.geckoview.BuildConfig.MOZILLA_VERSION} (Firefox)\n" +
                 "• Tor integrado (${org.torproject.jni.TorService.VERSION_NAME})\n" +
-                "• Motor: Android System WebView (Chromium ${if (::chromeMajor.isInitialized) chromeMajor else "?"})\n" +
-                "• ${blocklist?.size ?: 0} dominios de rastreo bloqueados\n" +
-                "• Perfiles efímeros: ${if (WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) "sí" else "no (se borra todo al salir)"}")
+                "• Navegación privada: cookies, caché e historial solo en RAM\n" +
+                "• Antihuella de Tor Browser (resistFingerprinting)\n" +
+                "• $blockedDomains dominios de rastreo bloqueados")
             .setPositiveButton("OK", null)
             .show()
     }
 
     private fun showUrl(url: String?) {
         if (ui.urlBar.hasFocus()) return
-        ui.urlBar.setText(if (url == null || url.startsWith("about:") || url.startsWith("data:")) "" else url)
+        val internal = url == null || url.startsWith("about:") || url.startsWith("data:") || url.startsWith(ASSETS)
+        ui.urlBar.setText(if (internal) "" else url)
     }
 
     private fun updateStatusLine() {
-        ui.statusLine.text = "🛡 ${blockedCount.get()} rastreadores bloqueados · " +
-            (if (jsEnabled) "JS activado" else "JS desactivado") + " · 🧅 Tor" +
-            (if (outdatedWebView) " · ⚠ WebView antiguo" else "")
+        ui.statusLine.text = "🛡 ${blockedTotal - blockedBase} rastreadores bloqueados · " +
+            (if (jsEnabled) "JS activado" else "JS desactivado") + " · 🧅 Tor · solo RAM"
     }
 
-    // ---------------- Nueva identidad y borrado ----------------
+    // ---------------- Nueva identidad ----------------
 
     private fun confirmNewIdentity() {
         AlertDialog.Builder(this)
@@ -459,121 +513,73 @@ class MainActivity : AppCompatActivity(), TorManager.Listener {
 
     private fun newIdentity() {
         if (!tor.newIdentity()) Toast.makeText(this, "No se pudieron renovar los circuitos de Tor", Toast.LENGTH_LONG).show()
-        destroyWebView()
-        blockedCount.set(0)
-        createWebView()
+        // Al cerrar la única sesión privada, Gecko descarta todos sus datos en memoria.
+        closeSession()
+        runtime?.storageController?.clearData(StorageController.ClearFlags.ALL)
+        blockedBase = blockedTotal
+        openSession()
         loadStartPage()
         Toast.makeText(this, "Nueva identidad lista", Toast.LENGTH_SHORT).show()
     }
 
-    private fun destroyWebView() {
-        val wv = webView ?: return
-        webView = null
-        ui.webContainer.removeView(wv)
-        wv.stopLoading()
-        wv.clearHistory()
-        wv.clearCache(true)
-        wv.clearFormData()
-        wv.destroy()
-        profileName = null  // el perfil ya no está en uso: se borra también
-        wipeData()
-    }
-
-    /** Borra todos los datos web: perfiles efímeros y el perfil por defecto. */
-    @SuppressLint("RequiresFeature")
-    private fun wipeData() {
-        CookieManager.getInstance().removeAllCookies(null)
-        CookieManager.getInstance().flush()
-        WebStorage.getInstance().deleteAllData()
-        if (WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) {
-            val store = ProfileStore.getInstance()
-            for (name in store.allProfileNames) {
-                if (name == androidx.webkit.Profile.DEFAULT_PROFILE_NAME || name == profileName) continue
-                runCatching {
-                    store.getProfile(name)?.let { p ->
-                        p.cookieManager.removeAllCookies(null)
-                        p.webStorage.deleteAllData()
-                    }
-                    store.deleteProfile(name)
-                }
-            }
-        }
-        profileName = null
-    }
-
-    /** Si la app se cerró de golpe la última vez, borra lo que quedara. */
-    private fun wipeLeftovers() {
-        wipeData()
-        runCatching { cacheDir.listFiles()?.filter { it.name.contains("WebView", true) }?.forEach { it.deleteRecursively() } }
-    }
-
     override fun onDestroy() {
-        destroyWebView()
-        if (isFinishing) {
-            tor.stop()
-            // El proxy queda configurado hacia un puerto muerto: si el proceso
-            // sobrevive, ninguna petición sale sin Tor.
-        }
         super.onDestroy()
+        if (isFinishing) {
+            closeSession()
+            tor.stop()
+            // Se termina el proceso: la memoria con los datos de navegación se libera
+            // y en el próximo arranque el motor se crea de cero con el nuevo puerto de Tor.
+            Process.killProcess(Process.myPid())
+        }
     }
 
-    // ---------------- Descargas por Tor ----------------
+    // ---------------- Descargas (ya llegan por Tor a través de Gecko) ----------------
 
-    private fun download(url: String, ua: String, disposition: String?, mime: String?) {
-        if (!url.startsWith("https://") && !url.startsWith("http://")) {
-            Toast.makeText(this, "Este tipo de descarga no está soportado", Toast.LENGTH_SHORT).show()
+    private fun confirmDownload(response: WebResponse) {
+        val body = response.body
+        if (body == null) {
+            Toast.makeText(this, "La descarga está vacía", Toast.LENGTH_SHORT).show()
             return
         }
-        val target = UrlCleaner.upgrade(url) ?: url
-        if (!target.startsWith("https://")) {
-            Toast.makeText(this, "Solo se permiten descargas por HTTPS", Toast.LENGTH_SHORT).show()
-            return
-        }
-        val name = URLUtil.guessFileName(target, disposition, mime)
+        val name = fileName(response)
+        val mime = response.headers["Content-Type"]?.substringBefore(';')?.trim() ?: "application/octet-stream"
         AlertDialog.Builder(this)
             .setTitle("Descargar archivo")
-            .setMessage("$name\n\nSe descargará a través de Tor en la carpeta Descargas.\n" +
+            .setMessage("$name\n\nSe guardará en la carpeta Descargas.\n" +
                 "Ojo: al abrir algunos documentos, otras apps podrían conectarse a Internet fuera de Tor.")
-            .setPositiveButton("Descargar") { _, _ -> downloadViaTor(target, name, mime) }
-            .setNegativeButton("Cancelar", null)
+            .setPositiveButton("Descargar") { _, _ -> save(body, name, mime) }
+            .setNegativeButton("Cancelar") { _, _ -> runCatching { body.close() } }
+            .setOnCancelListener { runCatching { body.close() } }
             .show()
     }
 
-    private fun downloadViaTor(url: String, name: String, mime: String?) {
-        if (httpTunnelPort <= 0) {
-            Toast.makeText(this, "Tor no está listo para descargas", Toast.LENGTH_SHORT).show()
-            return
-        }
+    private fun fileName(response: WebResponse): String {
+        val disposition = response.headers["Content-Disposition"] ?: ""
+        val fromHeader = Regex("filename\\*?=(?:UTF-8'')?\"?([^\";]+)\"?", RegexOption.IGNORE_CASE)
+            .find(disposition)?.groupValues?.get(1)?.let { Uri.decode(it) }
+        val fromUrl = Uri.parse(response.uri).lastPathSegment
+        return (fromHeader ?: fromUrl ?: "descarga").replace(Regex("[/\\\\:*?\"<>|]"), "_").take(120)
+    }
+
+    private fun save(body: java.io.InputStream, name: String, mime: String) {
         Toast.makeText(this, "Descargando $name…", Toast.LENGTH_SHORT).show()
         thread(name = "download") {
             val result = runCatching {
-                // Proxy HTTP CONNECT de Tor: el nombre del host se resuelve dentro de Tor.
-                val proxy = Proxy(Proxy.Type.HTTP, InetSocketAddress("127.0.0.1", httpTunnelPort))
-                val conn = URL(url).openConnection(proxy) as HttpURLConnection
-                conn.setRequestProperty("User-Agent", userAgent)
-                conn.setRequestProperty("Accept-Language", "en-US,en;q=0.9")
-                conn.connectTimeout = 60_000
-                conn.readTimeout = 60_000
-                conn.instanceFollowRedirects = true
                 val values = ContentValues().apply {
                     put(MediaStore.Downloads.DISPLAY_NAME, name)
-                    put(MediaStore.Downloads.MIME_TYPE, mime ?: conn.contentType ?: "application/octet-stream")
+                    put(MediaStore.Downloads.MIME_TYPE, mime)
                     put(MediaStore.Downloads.IS_PENDING, 1)
                 }
                 val uri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
                     ?: error("no se pudo crear el archivo")
                 try {
-                    conn.inputStream.use { input ->
-                        contentResolver.openOutputStream(uri)!!.use { output -> input.copyTo(output) }
-                    }
+                    body.use { input -> contentResolver.openOutputStream(uri)!!.use { input.copyTo(it) } }
                     values.clear()
                     values.put(MediaStore.Downloads.IS_PENDING, 0)
                     contentResolver.update(uri, values, null, null)
                 } catch (e: Exception) {
                     contentResolver.delete(uri, null, null)
                     throw e
-                } finally {
-                    conn.disconnect()
                 }
             }
             runOnUiThread {

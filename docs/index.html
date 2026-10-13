@@ -112,18 +112,19 @@
 
   <div class="hero">
     <div>
-      <div class="pill">🧅 Tor integrado · sin cuentas · sin telemetría</div>
+      <div class="pill">🧅 Tor integrado · motor de Firefox · todo en RAM</div>
       <h1>Navega sin dejar <span>rastro</span>.</h1>
       <p class="lead">Velo es un navegador para Android y Arch Linux que envía todo tu tráfico por Tor,
-        no guarda nada al cerrarse, bloquea rastreadores y dificulta la identificación por huella digital.</p>
+        mantiene tu navegación solo en memoria, bloquea rastreadores y usa la misma protección antihuella que Tor Browser.</p>
       <div class="cta">
-        <a class="btn btn-primary" id="download" href="https://github.com/melvinfranco99/velo-browser/releases/latest/download/velo.apk">
+        <a class="btn btn-primary" id="download" href="https://github.com/melvinfranco99/velo-browser/releases/latest/download/velo-arm64.apk">
           <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M5 20h14v-2H5v2zm7-18-5.5 5.5 1.41 1.41L11 5.83V16h2V5.83l3.09 3.08 1.41-1.41L12 2z" transform="rotate(180 12 12)"/></svg>
           Descargar APK para Android
         </a>
         <a class="btn btn-ghost" href="#linux">Versión Arch Linux</a>
       </div>
-      <p class="meta">Versión 1.0.0 · 12,0 MB · Android 10 o superior · <a href="#verificar">verificar la descarga</a></p>
+      <p class="meta">Versión 2.0.0 · 94 MB · Android 10 o superior · Para móviles de 2017 en adelante (ARM64).
+        ¿Móvil muy antiguo? <a href="#otras">Otras versiones</a> · <a href="#verificar">Verificar la descarga</a></p>
     </div>
     <div class="card qr desktop-only">
       <img src="qr.svg" alt="Código QR para descargar el APK de Velo">
@@ -153,13 +154,13 @@
 <section id="protecciones">
   <div class="wrap">
     <h2>Qué hace por tu privacidad</h2>
-    <p class="sub">Las protecciones se han probado en un emulador Android y en Arch Linux: la IP sale por Tor, WebRTC no existe para las webs, la zona horaria es UTC y el User-Agent no revela tu móvil.</p>
+    <p class="sub">Las protecciones se han probado en un emulador Android y en Arch Linux: la IP sale por Tor, WebRTC no existe para las webs, los rastreadores se bloquean y no se envía ninguna cabecera que identifique la app.</p>
     <div class="features">
       <div class="card feature"><div class="ico">🧅</div><h3>Tor siempre activo</h3><p>Tor viene dentro de la app (no necesitas Orbot). Todo el tráfico y el DNS van por Tor. Si Tor cae, nada sale por tu conexión normal: falla cerrado.</p></div>
-      <div class="card feature"><div class="ico">🧹</div><h3>Nada se queda guardado</h3><p>Cookies, caché, historial y almacenamiento se borran al salir y con «Nueva identidad». Además, la app no se copia en las copias de seguridad.</p></div>
+      <div class="card feature"><div class="ico">🧠</div><h3>Todo en RAM</h3><p>Navegación privada de Gecko: cookies, caché e historial viven solo en memoria y nunca se escriben en el almacenamiento. Al salir, Velo termina su proceso y todo desaparece. Además, la app no se copia en las copias de seguridad.</p></div>
       <div class="card feature"><div class="ico">🛡</div><h3>Rastreadores bloqueados</h3><p>Más de 72.000 dominios de rastreo, publicidad y malware bloqueados. Sin cookies de terceros y sin parámetros <code>utm_</code>, <code>fbclid</code> ni <code>gclid</code> en las URL.</p></div>
-      <div class="card feature"><div class="ico">🎭</div><h3>Antihuella digital</h3><p>Valores uniformes (pantalla, CPU, memoria, idioma, zona horaria UTC) y ruido por sitio en canvas y audio. El User-Agent no revela tu modelo de móvil.</p></div>
-      <div class="card feature"><div class="ico">📵</div><h3>Sin fugas de IP</h3><p>WebRTC eliminado, sin la cabecera <code>X-Requested-With</code>, sin Safe Browsing ni métricas de Google. La web no puede abrir otras apps que se conecten fuera de Tor.</p></div>
+      <div class="card feature"><div class="ico">🎭</div><h3>Antihuella de Tor Browser</h3><p>Usa <code>resistFingerprinting</code>, la protección de Firefox que desarrolla Tor Browser: el mismo User-Agent, idioma, zona horaria y tamaño de pantalla redondeado para todos, y sin WebGL.</p></div>
+      <div class="card feature"><div class="ico">📵</div><h3>Sin fugas de IP</h3><p>WebRTC desactivado, DNS local desactivado, sin HTTP/3 (UDP) y sin servicios de Google ni de Mozilla. Funciona sin Google Play Services. La web no puede abrir otras apps que se conecten fuera de Tor.</p></div>
       <div class="card feature"><div class="ico">🔒</div><h3>Solo HTTPS y sin permisos</h3><p>Las conexiones http se fuerzan a https. Cámara, micrófono, ubicación y notificaciones se deniegan siempre. Sin capturas de pantalla y con teclado en modo incógnito.</p></div>
     </div>
   </div>
@@ -175,7 +176,7 @@
         <tbody>
           <tr><td>Oculta tu IP</td><td class="n">✗</td><td class="n">✗</td><td class="p">Solo ventanas Tor (escritorio)</td><td class="velo-col y">✓ siempre</td><td class="y">✓ siempre</td></tr>
           <tr><td>Falla cerrado si cae Tor</td><td>—</td><td>—</td><td class="n">✗</td><td class="velo-col y">✓</td><td class="y">✓</td></tr>
-          <tr><td>Borra todo al cerrar</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="velo-col y">✓</td><td class="y">✓</td></tr>
+          <tr><td>Navegación solo en RAM</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="velo-col y">✓</td><td class="y">✓</td></tr>
           <tr><td>Telemetría al fabricante</td><td class="n">Mucha</td><td class="p">Desactivable</td><td class="p">Algo</td><td class="velo-col y">Ninguna</td><td class="y">Ninguna</td></tr>
           <tr><td>Bloqueo de rastreadores</td><td class="n">✗</td><td class="p">Básico</td><td class="y">✓</td><td class="velo-col y">✓</td><td class="p">Por aislamiento</td></tr>
           <tr><td>Antihuella digital</td><td class="n">✗</td><td class="p">Parcial</td><td class="y">✓</td><td class="velo-col y">✓</td><td class="y">✓✓</td></tr>
@@ -187,11 +188,24 @@
       <h3>Siendo honestos: cuándo usar Tor Browser en vez de Velo</h3>
       <ul>
         <li><b>Tamaño de la multitud.</b> El anonimato de Tor Browser se basa en que millones de personas tienen la misma huella. Velo tiene pocos usuarios, así que un sitio avanzado podría distinguir «alguien que usa Velo».</li>
-        <li><b>Motor.</b> En Android, Velo usa el WebView del sistema; mantén «Android System WebView» actualizado. Con versiones antiguas (anteriores a 2023 aprox.) el WebView envía la cabecera <code>X-Requested-With</code>, que revela que usas Velo (la app te avisa si es tu caso). Tor Browser usa un motor endurecido propio.</li>
+        <li><b>Actualizaciones del motor.</b> Velo incluye su propio motor (GeckoView, de Mozilla). Sus parches de seguridad llegan con cada nueva versión de Velo, no por la tienda: vuelve a esta página de vez en cuando para actualizar. Tor Browser además añade parches propios al motor.</li>
         <li><b>Auditoría.</b> Velo es un proyecto nuevo; Tor Browser lo revisan expertos desde hace años.</li>
       </ul>
       <p style="color:var(--dim);margin-bottom:0">Para el día a día, Velo es mucho más privado que cualquier navegador convencional. Si tu seguridad física depende de tu anonimato, usa Tor Browser o Tails.</p>
     </div>
+  </div>
+</section>
+
+<section id="otras">
+  <div class="wrap">
+    <h2>Otras versiones</h2>
+    <p class="sub">El motor de Firefox ocupa mucho, así que hay un APK para cada tipo de procesador. Casi todos los móviles actuales usan ARM64.</p>
+    <div class="features">
+      <div class="card feature"><h3>ARM64 (recomendada)</h3><p>Móviles de 2017 en adelante · 94 MB</p><p style="margin-top:12px"><a class="btn btn-primary" href="https://github.com/melvinfranco99/velo-browser/releases/latest/download/velo-arm64.apk">Descargar</a></p></div>
+      <div class="card feature"><h3>ARMv7 (32 bits)</h3><p>Móviles antiguos o muy básicos · 92 MB</p><p style="margin-top:12px"><a class="btn btn-ghost" href="https://github.com/melvinfranco99/velo-browser/releases/latest/download/velo-arm32.apk">Descargar</a></p></div>
+      <div class="card feature"><h3>x86_64</h3><p>Emuladores y Chromebooks · 99 MB</p><p style="margin-top:12px"><a class="btn btn-ghost" href="https://github.com/melvinfranco99/velo-browser/releases/latest/download/velo-x86_64.apk">Descargar</a></p></div>
+    </div>
+    <p class="meta">Si al instalar dice «La app no es compatible con tu teléfono», prueba con la versión ARMv7.</p>
   </div>
 </section>
 
@@ -200,11 +214,13 @@
     <h2>Verificar la descarga</h2>
     <p class="sub">Para asegurarte de que el APK no ha sido manipulado, compara su huella SHA-256 con esta:</p>
     <div class="card">
-      <p style="margin:0 0 4px;color:var(--dim)">SHA-256 de <code>velo.apk</code> (versión 1.0.0)</p>
-      <pre class="hash">b76ec61f174afa05023b25b97512eee192ceee834467bddb291d14b9a79b7926</pre>
+      <p style="margin:0 0 4px;color:var(--dim)">SHA-256 de cada APK (versión 2.0.0)</p>
+      <pre class="hash">2757f2ae699accd929606b9df4741d92eab9662f29e9069ec25fa96a5413df62  velo-arm64.apk
+0ad06a6a306ae883339cd7eef7c6d53b01b0da17d5c069d4ca2abc12629cfc2e  velo-arm32.apk
+5825d46c920b5b8819d19d6ced1f7696e83d05bc5545e2ec49de708af15650a4  velo-x86_64.apk</pre>
       <p style="margin:12px 0 4px;color:var(--dim)">Huella del certificado de firma (las actualizaciones siempre deben coincidir)</p>
       <pre class="hash">B8:1F:1E:6A:E2:8B:34:7E:FA:23:38:EE:0B:F9:BD:23:09:1C:85:A8:EA:35:97:19:81:10:CE:08:C9:93:9B:4A</pre>
-      <p style="margin:12px 0 0;color:var(--dim)">En Linux: <code>sha256sum velo.apk</code> · Con las herramientas de Android: <code>apksigner verify --print-certs velo.apk</code></p>
+      <p style="margin:12px 0 0;color:var(--dim)">En Linux: <code>sha256sum velo-arm64.apk</code> · Con las herramientas de Android: <code>apksigner verify --print-certs velo-arm64.apk</code></p>
     </div>
   </div>
 </section>
@@ -236,6 +252,7 @@ cd velo-browser
     <details><summary>¿Por qué tarda unos segundos en abrir?</summary><p>Velo se conecta a la red Tor antes de cargar nada, para no exponer nunca tu IP. La primera vez tarda más; después reutiliza el estado de Tor y es más rápido.</p></details>
     <details><summary>Una web no carga. ¿Qué hago?</summary><p>Algunas webs bloquean las conexiones desde Tor o solo funcionan con http. Prueba a recargar, usa «Nueva identidad» para cambiar de nodo de salida o desactiva «Solo HTTPS» en el menú.</p></details>
     <details><summary>¿Necesito Orbot?</summary><p>No. Tor va dentro de Velo. Si tienes Orbot en modo VPN también funciona, aunque el tráfico pasará dos veces por Tor y será más lento.</p></details>
+    <details><summary>¿Por qué ocupa tanto el APK?</summary><p>Porque incluye su propio motor web (el de Firefox) y Tor, en vez de usar el del sistema. Así controla por completo la privacidad: navegación solo en RAM, antihuella de Tor Browser y ninguna cabecera que delate la app.</p></details>
     <details><summary>¿Recoge Velo algún dato?</summary><p>No. No tiene cuentas, analítica ni servidores propios. El código es abierto y puedes revisarlo en GitHub.</p></details>
     <details><summary>¿Cómo se actualiza?</summary><p>Vuelve a esta página y descarga el APK nuevo; Android lo instala encima conservando la app, siempre que la firma coincida con la huella publicada arriba.</p></details>
   </div>

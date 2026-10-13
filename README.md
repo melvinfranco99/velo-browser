@@ -23,29 +23,37 @@ añade varias capas de protección:
 ## Android
 
 Descarga el APK desde la [web de Velo](https://melvinfranco99.github.io/velo-browser/)
-o desde [Releases](https://github.com/melvinfranco99/velo-browser/releases/latest).
-Funciona en Android 10 o superior y no necesita Orbot.
+o desde [Releases](https://github.com/melvinfranco99/velo-browser/releases/latest):
+`velo-arm64.apk` sirve para casi todos los móviles, `velo-arm32.apk` para
+móviles antiguos y `velo-x86_64.apk` para emuladores. Funciona en Android 10 o
+superior, sin Orbot y sin Google Play Services.
 
-La app Android (`android/`, en Kotlin) aplica el mismo enfoque que la versión
-de escritorio:
+La app Android (`android/`, en Kotlin) usa **GeckoView**, el motor de Firefox
+que también usan Tor Browser y Mullvad Browser en Android:
 
 - **Tor embebido** (tor-android 0.4.8 de The Guardian Project, autores de
-  Orbot). El WebView se fuerza por Tor con `ProxyController` y sin regla
-  DIRECT: si Tor cae, no sale nada. Las descargas también van por Tor.
-- **Perfiles efímeros** (en WebView 121 o posterior): «Nueva identidad» borra
-  el perfil entero. En versiones antiguas se borran cookies, almacenamiento y
-  caché.
-- **WebRTC eliminado**, porque en Android el proxy del WebView no cubre UDP.
-- **Sin rastros en el sistema:** sin copias de seguridad, sin Safe Browsing ni
-  métricas de Google, sin capturas de pantalla (`FLAG_SECURE`) y con el teclado
-  en modo incógnito.
-- **Huella:** User-Agent y Client Hints genéricos (sin modelo de móvil),
-  cabecera `X-Requested-With` desactivada (requiere WebView actualizado; la app
-  avisa si no lo está), `Accept-Language: en-US`, zona horaria UTC y ruido por
-  sitio en canvas y audio.
-- Bloqueo de unos 72.000 dominios, solo HTTPS y limpieza de URL.
+  Orbot). El proxy SOCKS de Tor se fija al crear el motor, con DNS remoto,
+  DNS local desactivado (`network.dns.disabled`), sin salida directa y sin
+  HTTP/3. Si Tor cae, no sale nada. Las descargas también van por Tor.
+- **Todo en RAM.** Navegación privada de Gecko, que mantiene cookies, caché e
+  historial en memoria. Además desactiva IndexedDB, Cache API y service workers
+  en modo privado, y la caché de disco. «Nueva identidad» cierra la sesión y
+  borra todo. Al salir, la app termina su proceso.
+- **Antihuella de Tor Browser:** `privacy.resistFingerprinting` con
+  *letterboxing*, WebGL y WebRTC desactivados, `en-US`, y cookies aisladas
+  por sitio.
+- **Velo Shield**, una extensión integrada que bloquea unos 72.000 dominios
+  con `webRequest`. Además: solo HTTPS, limpieza de parámetros de seguimiento
+  (`privacy.query_stripping`) y Global Privacy Control.
+- **Sin servicios de terceros:** sin Safe Browsing, sin listas de rastreo de
+  Mozilla, sin telemetría y sin Google Play Services (se excluye
+  `play-services-fido` y WebAuthn queda desactivado).
+- **Sin rastros en el sistema:** sin copias de seguridad, sin capturas de
+  pantalla (`FLAG_SECURE`) y con el teclado en modo incógnito.
 
-Para compilarlo: `cd android && ./gradlew assembleRelease` (JDK 17 y SDK 34).
+Para compilarlo: `cd android && ./gradlew assembleArm64Release` (JDK 17 y
+Android SDK 37.2). Los parches de seguridad del motor llegan actualizando la
+versión de GeckoView en `android/app/build.gradle.kts`.
 
 ## Instalación en Arch Linux
 

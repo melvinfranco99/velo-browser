@@ -13,10 +13,6 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Velo">
 
-        <!-- Sin Safe Browsing (consulta a Google fuera de Tor) ni métricas de WebView -->
-        <meta-data android:name="android.webkit.WebView.EnableSafeBrowsing" android:value="false" />
-        <meta-data android:name="android.webkit.WebView.MetricsOptOut" android:value="true" />
-
         <activity
             android:name=".MainActivity"
             android:exported="true"

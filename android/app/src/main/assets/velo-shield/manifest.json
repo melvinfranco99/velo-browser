@@ -1,0 +1,9 @@
+{
+  "manifest_version": 2,
+  "name": "Velo Shield",
+  "version": "2.0.0",
+  "description": "Bloqueo de rastreadores, publicidad y malware integrado en Velo.",
+  "browser_specific_settings": { "gecko": { "id": "shield@velo.melvin" } },
+  "permissions": ["webRequest", "webRequestBlocking", "<all_urls>", "nativeMessaging", "geckoViewAddons"],
+  "background": { "scripts": ["background.js"] }
+}
