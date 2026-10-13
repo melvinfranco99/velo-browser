@@ -5,7 +5,7 @@ import secrets
 from pathlib import Path
 
 from PyQt6 import sip
-from PyQt6.QtCore import QBuffer, QByteArray, QIODevice, QStandardPaths, Qt, QTimer, QUrl
+from PyQt6.QtCore import QBuffer, QByteArray, QEvent, QIODevice, QStandardPaths, Qt, QTimer, QUrl
 from PyQt6.QtGui import QAction, QIcon, QKeySequence
 from PyQt6.QtWebEngineCore import (
     QWebEngineLoadingInfo, QWebEnginePage, QWebEngineProfile, QWebEngineScript, QWebEngineSettings,
@@ -100,9 +100,16 @@ class MainWindow(QMainWindow):
         self.tabs.tabCloseRequested.connect(self.close_tab)
         self.tabs.currentChanged.connect(self._on_tab_changed)
         self.setCentralWidget(self.tabs)
-        new_tab_button = QToolButton(text="+", autoRaise=True)
-        new_tab_button.clicked.connect(lambda: self.add_tab(HOME_URL))
-        self.tabs.setCornerWidget(new_tab_button, Qt.Corner.TopRightCorner)
+        # Botón "+" justo después de la última pestaña, como en Chrome o Firefox.
+        self.new_tab_button = QToolButton(self.tabs, text="+", autoRaise=True,
+                                          toolTip="Nueva pestaña (Ctrl+T)")
+        self.new_tab_button.setFixedSize(28, 26)
+        font = self.new_tab_button.font()
+        font.setPointSize(font.pointSize() + 6)
+        self.new_tab_button.setFont(font)
+        self.new_tab_button.clicked.connect(lambda: self.add_tab(HOME_URL))
+        self.tabs.tabBar().tabMoved.connect(lambda *_: self._place_new_tab_button())
+        self.tabs.installEventFilter(self)
 
         self._build_toolbar()
         self._build_shortcuts()
@@ -197,13 +204,13 @@ class MainWindow(QMainWindow):
         self.js_action.setChecked(self.js_enabled)
         self._refresh_js_action()
 
-        action("🕶 Nueva identidad", "Cierra todo, borra la sesión y usa nuevos circuitos de Tor (Ctrl+Shift+U)",
+        action("Nueva identidad", "Cierra todo, borra la sesión y usa nuevos circuitos de Tor (Ctrl+Shift+U)",
                self.new_identity)
 
         self.tor_label = QLabel()
         self.tor_label.setContentsMargins(8, 0, 8, 0)
         if self.tor:
-            self.tor_label.setText("🧅 Tor")
+            self.tor_label.setText("● Tor")
             self.tor_label.setStyleSheet("color:#2e9e57;font-weight:bold")
             self.tor_label.setToolTip("Todo el tráfico sale por tu instancia privada de Tor")
         else:
@@ -271,6 +278,7 @@ class MainWindow(QMainWindow):
         view.page().loadingChanged.connect(lambda info, v=view: self._on_loading_changed(v, info))
         index = self.tabs.addTab(view, "Nueva pestaña")
         self.tabs.setCurrentIndex(index)
+        QTimer.singleShot(0, self._place_new_tab_button)
         if url is not None:
             view.load(url)
             if url == HOME_URL:
@@ -291,6 +299,23 @@ class MainWindow(QMainWindow):
                 url = info.url()
                 QTimer.singleShot(800, lambda: not sip.isdeleted(view) and view.load(url))
 
+    def _place_new_tab_button(self):
+        bar = self.tabs.tabBar()
+        button = self.new_tab_button
+        if bar.count() == 0:
+            return
+        last = bar.tabRect(bar.count() - 1)
+        x = bar.x() + last.right() + 4
+        x = min(x, self.tabs.width() - button.width() - 2)
+        y = bar.y() + max(0, (last.height() - button.height()) // 2)
+        button.move(x, y)
+        button.raise_()
+
+    def eventFilter(self, obj, event):
+        if obj is self.tabs and event.type() in (QEvent.Type.Resize, QEvent.Type.LayoutRequest, QEvent.Type.Show):
+            QTimer.singleShot(0, self._place_new_tab_button)
+        return super().eventFilter(obj, event)
+
     def close_tab(self, index):
         view = self.tabs.widget(index)
         if view is None:
@@ -299,12 +324,15 @@ class MainWindow(QMainWindow):
         sip.delete(view)  # borra también su página
         if self.tabs.count() == 0:
             self.close()
+        else:
+            QTimer.singleShot(0, self._place_new_tab_button)
 
     def _set_tab_title(self, view, title):
         index = self.tabs.indexOf(view)
         if index >= 0:
             self.tabs.setTabText(index, (title[:28] + "…") if len(title) > 29 else (title or "Sin título"))
             self.tabs.setTabToolTip(index, title)
+            QTimer.singleShot(0, self._place_new_tab_button)
         if view is self.current_view():
             self.setWindowTitle(f"{title} — {APP_NAME}" if title else APP_NAME)
 
@@ -323,13 +351,16 @@ class MainWindow(QMainWindow):
         self.url_bar.setText("" if url == HOME_URL else url.toDisplayString())
         self.url_bar.setCursorPosition(0)
         if url.scheme() == "https":
-            self.security_label.setText("🔒")
+            self.security_label.setText("HTTPS")
+            self.security_label.setStyleSheet("color:#2e9e57;font-weight:bold")
             self.security_label.setToolTip("Conexión cifrada (HTTPS)")
         elif url.host().endswith(".onion"):
-            self.security_label.setText("🧅")
+            self.security_label.setText(".onion")
+            self.security_label.setStyleSheet("color:#7d4cdb;font-weight:bold")
             self.security_label.setToolTip("Servicio onion: cifrado de extremo a extremo dentro de Tor")
         elif url.scheme() == "http":
-            self.security_label.setText("⚠")
+            self.security_label.setText("⚠ HTTP")
+            self.security_label.setStyleSheet("color:#d23c4b;font-weight:bold")
             self.security_label.setToolTip("Conexión NO cifrada")
         else:
             self.security_label.setText("")
@@ -424,7 +455,7 @@ class MainWindow(QMainWindow):
             view.findText(text)
 
     def _update_status(self):
-        self.blocked_label.setText(f"🛡 {self.interceptor.blocked_count} rastreadores bloqueados")
+        self.blocked_label.setText(f"{self.interceptor.blocked_count} rastreadores bloqueados")
 
     def about(self):
         QMessageBox.about(
